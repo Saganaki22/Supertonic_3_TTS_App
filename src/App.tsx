@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { useT } from "./hooks/useI18n";
 import { useTTS } from "./hooks/useTTS";
 import type { LoadProvider } from "./hooks/useTTS";
 import { chunkText, normalizeAudio } from "./lib/helpers";
@@ -22,6 +23,7 @@ const savedAccent = () => localStorage.getItem("accent") || "purple";
 
 export default function App() {
   const { state, load, unload, loadVoice, setCustomStyle, synthesise, cancel } = useTTS();
+  const t = useT();
   const [text, setText] = useState("");
   const [voice, setVoice] = useState("M1");
   const [lang, setLang] = useState("en");
@@ -69,9 +71,9 @@ export default function App() {
     try {
       await load(provider);
     } catch (e: any) {
-      showToast(`Failed to load on ${provider === "webgpu" ? "GPU" : "CPU"}: ${e.message}`);
+      showToast(t.errLoadProvider(provider === "webgpu" ? t.gpu : t.cpu, e.message));
     }
-  }, [state.status, state.provider, unload, load, showToast]);
+  }, [state.status, state.provider, unload, load, showToast, t]);
 
   const onLoadAndGenerate = useCallback(async (provider?: LoadProvider) => {
     try {
@@ -97,9 +99,9 @@ export default function App() {
       }
     } catch (e: any) {
       if (e.message !== "cancelled")
-        showToast(`Failed: ${e.message}`);
+        showToast(t.error + ": " + e.message);
     }
-  }, [load, text, lang, steps, speed, voice, customVoiceEnabled, customStyleJson, loadVoice, setCustomStyle, synthesise, showToast, audioHistory]);
+  }, [load, text, lang, steps, speed, voice, customVoiceEnabled, customStyleJson, loadVoice, setCustomStyle, synthesise, showToast, audioHistory, t]);
 
   const onVoiceChange = useCallback(
     async (id: string) => {
@@ -108,10 +110,10 @@ export default function App() {
       try {
         await loadVoice(id);
       } catch (e: any) {
-        showToast(`Failed to load voice ${id}: ${e.message}`);
+        showToast(t.errLoadVoice(id, e.message));
       }
     },
-    [loadVoice, customVoiceEnabled, customStyleJson, showToast]
+    [loadVoice, customVoiceEnabled, customStyleJson, showToast, t]
   );
 
   const onLoadCustomStyle = useCallback(
@@ -142,7 +144,7 @@ export default function App() {
   const onGenerate = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed) {
-      showToast("Enter some text first.");
+      showToast(t.errNoText);
       return;
     }
     try {
@@ -164,9 +166,9 @@ export default function App() {
       }
     } catch (e: any) {
       if (e.message !== "cancelled")
-        showToast(`Generation failed: ${e.message}`);
+        showToast(t.errGenFailed(e.message));
     }
-  }, [text, lang, steps, speed, synthesise, customVoiceEnabled, customStyleJson, voice, loadVoice, setCustomStyle, showToast, audioHistory]);
+  }, [text, lang, steps, speed, synthesise, customVoiceEnabled, customStyleJson, voice, loadVoice, setCustomStyle, showToast, audioHistory, t]);
 
   const chunks = text.trim() ? chunkText(text.trim()).length : 0;
 
@@ -209,7 +211,7 @@ export default function App() {
         <section id="left-panel" style={{ width: panelWidth }}>
           <div className="left-panel-scroll">
             <div className="panel-section">
-              <label className="section-label">Voice</label>
+              <label className="section-label">{t.voice}</label>
               <VoiceGrid selected={voice} onSelect={onVoiceChange} />
             </div>
             <VoiceControls
@@ -240,7 +242,7 @@ export default function App() {
                 checked={normalize}
                 onChange={(e) => setNormalize(e.target.checked)}
               />
-              <span>Normalize audio</span>
+              <span>{t.normalizeAudio}</span>
             </label>
             <div className="panel-section">
               {state.status === "generating" ? (
@@ -273,7 +275,7 @@ export default function App() {
                   >
                     <polygon points="5 3 19 12 5 21 5 3" />
                   </svg>
-                  {state.status === "ready" ? "Generate Speech" : "Load + Generate"}
+                  {state.status === "ready" ? t.generateSpeech : t.loadAndGenerate}
                 </button>
               )}
               {state.status === "generating" && (
@@ -282,7 +284,7 @@ export default function App() {
                     <line x1="18" y1="6" x2="6" y2="18" />
                     <line x1="6" y1="6" x2="18" y2="18" />
                   </svg>
-                  Cancel Generation
+                  {t.cancelGeneration}
                 </button>
               )}
             </div>

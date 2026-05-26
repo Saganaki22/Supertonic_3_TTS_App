@@ -1132,6 +1132,26 @@ textarea#text-input::placeholder { color: var(--text-muted); }
   padding: 6px 0 0;
 }
 
+.settings-lang-select {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  padding: 6px 10px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 12px;
+  appearance: none;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.settings-lang-select:focus { border-color: var(--accent); }
+.settings-lang-select option {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
 /* ─── Cancel Button ─── */
 #cancel-btn {
   background: var(--status-error);

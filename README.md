@@ -2,6 +2,7 @@
   <img src="public/assets/logo.png" alt="Supertonic 3" width="80" />
   <h1 align="center">Supertonic 3 — TTS App</h1>
   <p align="center">On-device neural text-to-speech for Windows, powered by <a href="https://github.com/supertone-inc/supertonic">Supertone's Supertonic 3</a> engine.</p>
+  <p align="center"><strong>English</strong> | <a href="README_ZH.md">中文</a></p>
 </p>
 
 <p align="center">
@@ -48,6 +49,7 @@ It wraps the [Supertone Supertonic 3](https://github.com/supertone-inc/supertoni
 | **Dark / Light theme** | System-aware theme toggle |
 | **5 accent colors** | Purple, Blue, Green, Red, Yellow |
 | **UI scaling** | 80% to 150% zoom slider |
+| **7 UI languages** | English, 中文, Español, Français, Ελληνικά, Русский, 日本語 |
 | **Resizable panels** | Drag the divider between input and output (320–800 px) |
 | **Window state** | Remembers position and size between sessions |
 | **Portable installer** | NSIS portable EXE — no UAC, no registry, no admin required |
@@ -226,6 +228,7 @@ All settings are accessible from the gear icon in the header:
 | Accent Color | Purple, Blue, Green, Red, Yellow | Purple |
 | GPU / CPU | WebGPU / WASM SIMD | GPU (auto-fallback) |
 | UI Scale | 80% – 150% | 100% |
+| App Language | English, 中文, Español, Français, Ελληνικά, Русский, 日本語 | English |
 | Normalize Audio | On / Off | Off |
 | MP3 Bitrate | 128 / 192 / 320 kbps | 192 kbps |
 | Steps | 5 – 16 | 8 |

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useT } from "../hooks/useI18n";
 
 const VOICES = [
   { id: "M1", gender: "Male" },
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export default function VoiceGrid({ selected, onSelect }: Props) {
+  const t = useT();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
 
@@ -49,6 +51,8 @@ export default function VoiceGrid({ selected, onSelect }: Props) {
     };
   }, []);
 
+  const genderLabel = (id: string) => id.startsWith("M") ? t.male : t.female;
+
   return (
     <div id="voice-grid">
       <div className="voice-row">
@@ -59,7 +63,7 @@ export default function VoiceGrid({ selected, onSelect }: Props) {
             onClick={() => onSelect(v.id)}
           >
             <span className="voice-id">{v.id}</span>
-            <span className="voice-gender">{v.gender}</span>
+            <span className="voice-gender">{genderLabel(v.id)}</span>
             <button
               className="play-btn"
               onClick={(e) => {
@@ -80,7 +84,7 @@ export default function VoiceGrid({ selected, onSelect }: Props) {
             onClick={() => onSelect(v.id)}
           >
             <span className="voice-id">{v.id}</span>
-            <span className="voice-gender">{v.gender}</span>
+            <span className="voice-gender">{genderLabel(v.id)}</span>
             <button
               className="play-btn"
               onClick={(e) => {

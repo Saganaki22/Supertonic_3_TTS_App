@@ -1,4 +1,5 @@
 import type { AudioEntry } from "../hooks/useAudioHistory";
+import { useT } from "../hooks/useI18n";
 
 interface Props {
   history: AudioEntry[];
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function AudioHistory({ history, playingId, onPlay, onRemove, onClearAll }: Props) {
+  const t = useT();
   if (history.length === 0) return null;
 
   const fmt = (s: number) => {
@@ -20,15 +22,15 @@ export default function AudioHistory({ history, playingId, onPlay, onRemove, onC
   const timeAgo = (ts: number) => {
     const diff = Math.floor((Date.now() - ts) / 1000);
     if (diff < 60) return "just now";
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
+    if (diff < 3600) return t.timeAgoM(Math.floor(diff / 60));
+    if (diff < 86400) return t.timeAgoH(Math.floor(diff / 3600));
+    return t.timeAgoD(Math.floor(diff / 86400));
   };
 
   return (
     <div className="history-section">
       <div className="history-header">
-        <span className="section-label">History</span>
+        <span className="section-label">{t.history}</span>
         <button className="history-clear" onClick={onClearAll}>Clear all</button>
       </div>
       <div className="history-list">

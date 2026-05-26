@@ -1,5 +1,6 @@
 import { useCallback, useState, useRef } from "react";
 import { openExternal } from "../lib/tauri";
+import { useT } from "../hooks/useI18n";
 
 interface Props {
   enabled: boolean;
@@ -18,6 +19,7 @@ export default function VoiceClone({
   onClearStyle,
   onError,
 }: Props) {
+  const t = useT();
   const [dragOver, setDragOver] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -30,37 +32,37 @@ export default function VoiceClone({
         try {
           json = JSON.parse(text);
         } catch {
-          onError("Invalid JSON file. Please provide a valid voice style .json.");
+          onError(t.errInvalidJson);
           return;
         }
         if (!json.style_ttl || !json.style_dp) {
-          onError("Invalid voice style: missing style_ttl or style_dp. Train one with kdrkdrkdr/supertonic.embed");
+          onError(t.errMissingFields);
           return;
         }
         for (const key of ["style_ttl", "style_dp"]) {
           const block = json[key];
           if (!block.dims || !Array.isArray(block.dims) || block.dims.length !== 3) {
-            onError(`Invalid voice style: ${key}.dims must be a 3-element array.`);
+            onError(t.errDims(key));
             return;
           }
           if (!block.data || !Array.isArray(block.data)) {
-            onError(`Invalid voice style: ${key}.data must be an array.`);
+            onError(t.errDataArray(key));
             return;
           }
           const expectedLen = block.dims[0] * block.dims[1] * block.dims[2];
           const flatLen = (block.data as any[]).flat(Infinity).length;
           if (flatLen < expectedLen) {
-            onError(`Invalid voice style: ${key}.data has ${flatLen} values, expected ${expectedLen}.`);
+            onError(t.errDataLen(key, flatLen, expectedLen));
             return;
           }
         }
         json.name = file.name;
         onLoadStyle(json);
       } catch (e: any) {
-        onError(`Failed to read voice style: ${e.message || e}`);
+        onError(t.errReadStyle(e.message || String(e)));
       }
     },
-    [onLoadStyle, onError]
+    [onLoadStyle, onError, t]
   );
 
   const onDrop = useCallback(
@@ -83,7 +85,7 @@ export default function VoiceClone({
   );
 
   const fileName = styleJson
-    ? (styleJson as any).name || "Custom voice style loaded"
+    ? (styleJson as any).name || t.customVoiceLoaded
     : null;
 
   return (
@@ -95,7 +97,7 @@ export default function VoiceClone({
             checked={enabled}
             onChange={(e) => onToggle(e.target.checked)}
           />
-          <span className="toggle-label">Custom voice</span>
+          <span className="toggle-label">{t.customVoice}</span>
         </label>
         <button
           type="button"
@@ -109,8 +111,7 @@ export default function VoiceClone({
           </svg>
           {showTooltip && (
             <span className="voice-clone-tooltip" onClick={(e) => e.stopPropagation()}>
-              Train voice styles using&nbsp;
-              <a href="#" onClick={(e) => { e.preventDefault(); openExternal("https://github.com/Saganaki22/supertonic_embeddings_trainer"); }}>this repo</a>
+              {t.trainVoiceUsing}{t.thisRepo && (<>&nbsp;<a href="#" onClick={(e) => { e.preventDefault(); openExternal("https://github.com/Saganaki22/supertonic_embeddings_trainer"); }}>{t.thisRepo}</a></>)}
               <button className="tooltip-close" onClick={() => setShowTooltip(false)}>×</button>
             </span>
           )}
@@ -159,7 +160,7 @@ export default function VoiceClone({
                 <line x1="12" y1="19" x2="12" y2="23" />
                 <line x1="8" y1="23" x2="16" y2="23" />
               </svg>
-              <span>Drop a voice style .json file or click to browse</span>
+              <span>{t.dropVoiceStyle}</span>
             </div>
           )}
         </div>

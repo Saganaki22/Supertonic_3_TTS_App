@@ -1,3 +1,5 @@
+import { useT } from "../hooks/useI18n";
+
 interface Props {
   lang: string;
   onLangChange: (lang: string) => void;
@@ -50,10 +52,11 @@ export default function VoiceControls({
   speed,
   onSpeedChange,
 }: Props) {
+  const t = useT();
   return (
     <>
       <div className="panel-section">
-        <label className="section-label">Language</label>
+        <label className="section-label">{t.language}</label>
         <div className="select-wrap">
           <select
             id="lang-select"
@@ -74,7 +77,7 @@ export default function VoiceControls({
       <div className="param-row">
         <div className="param-field">
           <div className="param-header">
-            <span className="param-label">Steps</span>
+            <span className="param-label">{t.steps}</span>
             <span className="param-value">{steps}</span>
           </div>
           <input
@@ -86,13 +89,13 @@ export default function VoiceControls({
             onChange={(e) => onStepsChange(Number(e.target.value))}
           />
           <div className="param-extremes">
-            <span>5 (Speed)</span>
-            <span>16 (Quality)</span>
+            <span>{t.stepsSpeed}</span>
+            <span>{t.stepsQuality}</span>
           </div>
         </div>
         <div className="param-field">
           <div className="param-header">
-            <span className="param-label">Speed</span>
+            <span className="param-label">{t.speed}</span>
             <span className="param-value">{speed.toFixed(2)}×</span>
           </div>
           <input
@@ -105,7 +108,7 @@ export default function VoiceControls({
           />
           {speed > 1.6 && (
             <div className="param-warning">
-              High speed may cause distorted output
+              {t.speedWarning}
             </div>
           )}
         </div>

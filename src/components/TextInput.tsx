@@ -7,6 +7,7 @@ import {
   pasteFromClipboard,
 } from "../lib/tauri";
 import { cleanPdfText } from "../lib/helpers";
+import { useT } from "../hooks/useI18n";
 
 interface Props {
   value: string;
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export default function TextInput({ value, chunks, onChange, onError }: Props) {
+  const t = useT();
   const [dragOver, setDragOver] = useState(false);
   const [loadedFile, setLoadedFile] = useState<string | null>(null);
 
@@ -27,9 +29,7 @@ export default function TextInput({ value, chunks, onChange, onError }: Props) {
           const raw = await extractPdfText(path);
           const cleaned = cleanPdfText(raw);
           if (cleaned.length < 20) {
-            onError(
-              "This PDF appears to be scanned. Text extraction requires a text-layer PDF."
-            );
+            onError(t.errScannedPdf);
             return;
           }
           onChange(cleaned);
@@ -43,15 +43,15 @@ export default function TextInput({ value, chunks, onChange, onError }: Props) {
           onChange(text);
           setLoadedFile(name);
         } else if (path.endsWith(".doc")) {
-          onError("Legacy .doc files aren't supported. Please save as .docx.");
+          onError(t.errLegacyDoc);
         } else {
-          onError("Only .txt, .pdf, .docx, and .md files are supported.");
+          onError(t.errFileTypes);
         }
       } catch (e: any) {
-        onError(`Failed to read file: ${e}`);
+        onError(t.errReadFile(String(e)));
       }
     },
-    [onChange, onError]
+    [onChange, onError, t]
   );
 
   const onDrop = useCallback(
@@ -62,10 +62,10 @@ export default function TextInput({ value, chunks, onChange, onError }: Props) {
       if (file && (file as any).path) {
         handleFile((file as any).path);
       } else {
-        onError("File path not available — use the browse button instead.");
+        onError(t.errFilePath);
       }
     },
-    [handleFile, onError]
+    [handleFile, onError, t]
   );
 
   const onBrowse = useCallback(async () => {
@@ -81,9 +81,9 @@ export default function TextInput({ value, chunks, onChange, onError }: Props) {
         setLoadedFile(null);
       }
     } catch {
-      onError("Clipboard read failed.");
+      onError(t.errClipboard);
     }
-  }, [onChange, onError]);
+  }, [onChange, onError, t]);
 
   const onRemoveFile = useCallback(() => {
     setLoadedFile(null);
@@ -92,7 +92,7 @@ export default function TextInput({ value, chunks, onChange, onError }: Props) {
 
   return (
     <div className="panel-section">
-      <label className="section-label">Text</label>
+      <label className="section-label">{t.text}</label>
       <div
         id="drop-zone"
         className={dragOver ? "drag-over" : ""}
@@ -122,28 +122,28 @@ export default function TextInput({ value, chunks, onChange, onError }: Props) {
             onChange(e.target.value);
             setLoadedFile(null);
           }}
-          placeholder="Type or paste text here, or drop a .txt / .pdf / .docx / .md file…"
+          placeholder={t.textPlaceholder}
           spellCheck={false}
         />
       </div>
       <div className="text-meta">
-        <span>{value.trim().length.toLocaleString()} chars</span>
+        <span>{value.trim().length.toLocaleString()} {t.chars}</span>
         <span className="sep">·</span>
-        <span>{chunks} {chunks === 1 ? "chunk" : "chunks"}</span>
+        <span>{chunks} {chunks === 1 ? t.chunk : t.chunks}</span>
       </div>
       <div className="input-actions">
-        <button onClick={onPaste} title="Paste from clipboard">
+        <button onClick={onPaste} title={t.pasteFromClipboard}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
           </svg>
-          Paste
+          {t.paste}
         </button>
-        <button onClick={onBrowse} title="Open file">
+        <button onClick={onBrowse} title={t.openFile}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
           </svg>
-          Browse
+          {t.browse}
         </button>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { useT } from "../hooks/useI18n";
 
 const CACHE_NAME = "supersonic-tts-v1";
 
@@ -17,6 +18,7 @@ function formatBytes(bytes: number): string {
 }
 
 export default function CachePanel() {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<CacheEntry[]>([]);
 
@@ -53,7 +55,7 @@ export default function CachePanel() {
   return (
     <div id="cache-panel">
       <button id="cache-toggle" className="cache-header" onClick={() => setOpen(!open)}>
-        <span className="toggle-icon">{open ? "▾" : "▸"}</span> Model cache
+        <span className="toggle-icon">{open ? "▾" : "▸"}</span> {t.modelCache}
         <span id="cache-count-badge">{entries.length}</span>
       </button>
       {open && (

@@ -3,6 +3,7 @@ import { useAudioPlayer } from "../hooks/useAudioPlayer";
 import { wavToMp3, normalizeAudio } from "../lib/helpers";
 import { writeWavFile } from "../lib/tts";
 import { saveWavFile, saveMp3File, browseSave } from "../lib/tauri";
+import { useT } from "../hooks/useI18n";
 
 interface Props {
   wavData: Float32Array | null;
@@ -65,6 +66,7 @@ export default function OutputPanel({
   onError,
   onSaved,
 }: Props) {
+  const t = useT();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [dlOpen, setDlOpen] = useState(false);
@@ -154,13 +156,13 @@ export default function OutputPanel({
       if (path) {
         await saveWavFile(path, Array.from(new Uint8Array(buf)));
         const name = path.split(/[/\\]/).pop() || path;
-        onSaved(`Saved ${name}`, "success");
+        onSaved(t.saved(name), "success");
       }
     } catch (e: any) {
-      onError(`WAV save failed: ${e}`);
+      onError(t.errWavSave(String(e)));
     }
     setEncoding(false);
-  }, [wavData, sampleRate, normalize, onSaved, onError]);
+  }, [wavData, sampleRate, normalize, onSaved, onError, t]);
 
   const onDownloadMp3 = useCallback(async () => {
     if (!wavData) return;
@@ -175,13 +177,13 @@ export default function OutputPanel({
       if (path) {
         await saveMp3File(path, Array.from(mp3));
         const name = path.split(/[/\\]/).pop() || path;
-        onSaved(`Saved ${name} (${bitrate}kbps)`, "success");
+        onSaved(t.savedBitrate(name, bitrate), "success");
       }
     } catch (e: any) {
-      onError(`MP3 encoding failed: ${e}`);
+      onError(t.errMp3Encode(String(e)));
     }
     setEncoding(false);
-  }, [wavData, sampleRate, bitrate, normalize, onError, onSaved]);
+  }, [wavData, sampleRate, bitrate, normalize, onError, onSaved, t]);
 
   if (!wavData) {
     return (
@@ -201,9 +203,9 @@ export default function OutputPanel({
           <rect x="16" y="4" width="3" height="16" rx="1" />
           <rect x="21" y="8" width="3" height="8" rx="1" />
         </svg>
-        <p className="output-empty-title">No audio generated yet</p>
+        <p className="output-empty-title">{t.noAudioYet}</p>
         <p className="output-empty-sub">
-          Configure voice settings and click Generate
+          {t.configureVoice}
         </p>
       </div>
     );
@@ -262,7 +264,7 @@ export default function OutputPanel({
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            {encoding ? "Encoding…" : "Download"}
+            {encoding ? t.encoding : t.download}
             {!encoding && (
               <svg
                 className={`dl-chevron ${dlOpen ? "open" : ""}`}
@@ -291,7 +293,7 @@ export default function OutputPanel({
                 <span className="dl-desc">Lossless, {fmtSampleRate(sampleRate)}</span>
               </button>
               <div className="dl-bitrate-section">
-                <span className="dl-bitrate-label">MP3 bitrate</span>
+                <span className="dl-bitrate-label">{t.mp3Bitrate}</span>
                 <div className="dl-bitrate-btns">
                   {BITRATES.map((br) => (
                     <button

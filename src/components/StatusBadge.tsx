@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import type { TTSStatus, LoadProvider } from "../hooks/useTTS";
+import { useT } from "../hooks/useI18n";
 
 interface Props {
   status: TTSStatus;
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function StatusBadge({ status, label, provider, onLoad, onSwitchProvider }: Props) {
+  const t = useT();
   const clickable = status === "idle" || status === "error";
   const showChevron = clickable || status === "ready";
   const [menuOpen, setMenuOpen] = useState(false);
@@ -27,9 +29,9 @@ export default function StatusBadge({ status, label, provider, onLoad, onSwitchP
 
   const displayLabel =
     status === "idle"
-      ? "Load model"
+      ? t.loadModel
       : status === "ready" && provider
-        ? `Ready · ${provider}`
+        ? `${t.ready} · ${provider}`
         : label;
 
   useEffect(() => {
@@ -90,8 +92,8 @@ export default function StatusBadge({ status, label, provider, onLoad, onSwitchP
               <line x1="2" y1="15" x2="4" y2="15" />
             </svg>
             <span className="load-menu-text">
-              GPU
-              <span className="load-menu-desc">WebGPU · faster</span>
+              {t.gpu}
+              <span className="load-menu-desc">{t.webgpuDesc}</span>
             </span>
           </button>
           <button className="load-menu-item" onClick={() => handleLoad("wasm")}>
@@ -101,8 +103,8 @@ export default function StatusBadge({ status, label, provider, onLoad, onSwitchP
               <line x1="10" y1="10" x2="10" y2="14" />
             </svg>
             <span className="load-menu-text">
-              CPU
-              <span className="load-menu-desc">WASM · compatible</span>
+              {t.cpu}
+              <span className="load-menu-desc">{t.wasmDesc}</span>
             </span>
           </button>
         </div>
