@@ -19,6 +19,9 @@
   <img src="https://img.shields.io/badge/Portable-NSIS-00A86B?style=flat-square" alt="Portable NSIS" />
 </p>
 
+<img width="1420" height="1122" alt="image" src="https://github.com/user-attachments/assets/4a3e96ee-6246-42dc-8c42-3f99536c54bc" />
+
+
 ---
 
 ## What It Does
