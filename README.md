@@ -92,6 +92,8 @@ It wraps the [Supertone Supertonic 3](https://github.com/supertone-inc/supertoni
 
 ## Getting Started
 
+> **Want the prebuilt app?** Download the [latest release](https://github.com/Saganaki22/Supertonic_3_TTS_App/releases) — portable EXE or NSIS installer, no build tools needed.
+
 ### 1. Clone
 
 ```bash

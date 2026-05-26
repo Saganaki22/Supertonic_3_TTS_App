@@ -89,6 +89,8 @@ Supertonic 3 TTS App 是一款**完全离线**的文字转语音应用，所有�
 
 ## 快速开始
 
+> **想要现成的应用？** 从[最新发布](https://github.com/Saganaki22/Supertonic_3_TTS_App/releases)下载 — 便携 EXE 或 NSIS 安装包，无需构建工具。
+
 ### 1. 克隆
 
 ```bash
