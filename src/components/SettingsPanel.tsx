@@ -3,7 +3,7 @@ import { openExternal } from "../lib/tauri";
 import type { LoadProvider } from "../hooks/useTTS";
 import { useI18n } from "../hooks/useI18n";
 
-const VERSION = "0.1.2";
+const VERSION = "0.1.3";
 const REPO_RELEASES = "https://github.com/Saganaki22/Supertonic_3_TTS_App/releases";
 const AUTHOR_GH = "https://github.com/Saganaki22";
 
