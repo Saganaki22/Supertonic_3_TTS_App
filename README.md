@@ -20,8 +20,7 @@
   <img src="https://img.shields.io/badge/Portable-NSIS-00A86B?style=flat-square" alt="Portable NSIS" />
 </p>
 
-<img width="1420" height="1122" alt="image" src="https://github.com/user-attachments/assets/4a3e96ee-6246-42dc-8c42-3f99536c54bc" />
-
+<img width="1586" height="1241" alt="Screenshot 2026-05-27 041515" src="https://github.com/user-attachments/assets/524f1619-943b-4943-983e-1201a2dcc0fb" />
 
 ---
 
