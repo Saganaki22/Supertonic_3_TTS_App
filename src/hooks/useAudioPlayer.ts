@@ -1,10 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
-export function useAudioPlayer() {
+export function useAudioPlayer(volume = 1) {
   const ctxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const gainRef = useRef<GainNode | null>(null);
   const bufferRef = useRef<AudioBuffer | null>(null);
   const durationRef = useRef(0);
+  const volumeRef = useRef(volume);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
@@ -37,6 +39,7 @@ export function useAudioPlayer() {
   }, [cancelTick]);
 
   const stop = useCallback(() => {
+    endedRef.current = true;
     try { sourceRef.current?.stop(); } catch {}
     sourceRef.current = null;
     setPlaying(false);
@@ -44,8 +47,10 @@ export function useAudioPlayer() {
   }, [cancelTick]);
 
   const reset = useCallback(() => {
+    endedRef.current = true;
     try { sourceRef.current?.stop(); } catch {}
     sourceRef.current = null;
+    gainRef.current = null;
     ctxRef.current?.close();
     ctxRef.current = null;
     bufferRef.current = null;
@@ -69,9 +74,14 @@ export function useAudioPlayer() {
       const buf = bufferRef.current;
       if (!buf) return;
       const src = ctx.createBufferSource();
+      const gain = gainRef.current ?? ctx.createGain();
+      const isNewGain = !gainRef.current;
+      gain.gain.value = volumeRef.current;
       src.buffer = buf;
-      src.connect(ctx.destination);
+      src.connect(gain);
+      if (isNewGain) gain.connect(ctx.destination);
       sourceRef.current = src;
+      gainRef.current = gain;
       offsetRef.current = startTime;
       startTimeRef.current = ctx.currentTime;
       endedRef.current = false;
@@ -95,8 +105,12 @@ export function useAudioPlayer() {
   const play = useCallback(
     (float32: Float32Array, sampleRate: number) => {
       stop();
+      try { ctxRef.current?.close(); } catch {}
       const ctx = new AudioContext({ sampleRate });
       ctxRef.current = ctx;
+      gainRef.current = ctx.createGain();
+      gainRef.current.gain.value = volumeRef.current;
+      gainRef.current.connect(ctx.destination);
       const buf = ctx.createBuffer(1, float32.length, sampleRate);
       buf.getChannelData(0).set(float32);
       bufferRef.current = buf;
@@ -158,6 +172,11 @@ export function useAudioPlayer() {
       setPlaying(true);
     }
   }, [createSource]);
+
+  useEffect(() => {
+    volumeRef.current = volume;
+    if (gainRef.current) gainRef.current.gain.value = volume;
+  }, [volume]);
 
   useEffect(() => {
     return () => {

@@ -23,6 +23,10 @@ export async function extractDocxText(path: string): Promise<string> {
   return invoke<string>("extract_docx_text", { path });
 }
 
+export async function getLogicalCpuCount(): Promise<number> {
+  return invoke<number>("logical_cpu_count");
+}
+
 export async function openTextFile(): Promise<string | null> {
   return open({
     multiple: false,

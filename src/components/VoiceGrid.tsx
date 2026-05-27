@@ -17,9 +17,10 @@ const VOICES = [
 interface Props {
   selected: string;
   onSelect: (id: string) => void;
+  volume: number;
 }
 
-export default function VoiceGrid({ selected, onSelect }: Props) {
+export default function VoiceGrid({ selected, onSelect, volume }: Props) {
   const t = useT();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -34,6 +35,7 @@ export default function VoiceGrid({ selected, onSelect }: Props) {
       return;
     }
     const a = new Audio(`/voice-samples/${voiceId}.wav`);
+    a.volume = volume;
     audioRef.current = a;
     setPlayingId(voiceId);
     a.play().catch(() => {});
@@ -44,6 +46,10 @@ export default function VoiceGrid({ selected, onSelect }: Props) {
       }
     });
   };
+
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = volume;
+  }, [volume]);
 
   useEffect(() => {
     return () => {

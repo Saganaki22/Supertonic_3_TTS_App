@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import { useAudioPlayer } from "./useAudioPlayer";
 
 export interface AudioEntry {
@@ -15,21 +15,17 @@ export interface AudioEntry {
   timestamp: number;
 }
 
-export function useAudioHistory() {
+export function useAudioHistory(volume = 1) {
   const [history, setHistory] = useState<AudioEntry[]>([]);
-  const currentRef = useRef<AudioEntry | null>(null);
-  const player = useAudioPlayer();
+  const player = useAudioPlayer(volume);
 
-  const pushCurrent = useCallback((entry: Omit<AudioEntry, "id" | "timestamp">) => {
+  const addEntry = useCallback((entry: Omit<AudioEntry, "id" | "timestamp">) => {
     const full: AudioEntry = {
       ...entry,
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       timestamp: Date.now(),
     };
-    if (currentRef.current) {
-      setHistory((prev) => [currentRef.current!, ...prev].slice(0, 10));
-    }
-    currentRef.current = full;
+    setHistory((prev) => [full, ...prev].slice(0, 6));
   }, []);
 
   const removeEntry = useCallback((id: string) => {
@@ -38,9 +34,8 @@ export function useAudioHistory() {
 
   const clearAll = useCallback(() => {
     player.stop();
-    currentRef.current = null;
     setHistory([]);
   }, [player]);
 
-  return { history, pushCurrent, removeEntry, clearAll, player };
+  return { history, addEntry, removeEntry, clearAll, player };
 }

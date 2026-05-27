@@ -6,7 +6,7 @@ interface Props {
   enabled: boolean;
   onToggle: (v: boolean) => void;
   styleJson: object | null;
-  onLoadStyle: (json: object) => void;
+  onLoadStyle: (json: object) => void | Promise<void>;
   onClearStyle: () => void;
   onError: (msg: string) => void;
 }
@@ -57,7 +57,7 @@ export default function VoiceClone({
           }
         }
         json.name = file.name;
-        onLoadStyle(json);
+        await onLoadStyle(json);
       } catch (e: any) {
         onError(t.errReadStyle(e.message || String(e)));
       }

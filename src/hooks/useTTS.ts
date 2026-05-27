@@ -43,7 +43,11 @@ export function useTTS() {
     genTime: 0,
   });
 
-  const load = useCallback(async (preferred: LoadProvider = "webgpu") => {
+  const load = useCallback(async (
+    preferred: LoadProvider = "webgpu",
+    cpuUsagePercent = 75,
+    cpuThreadCount?: number
+  ) => {
     setState((s) => ({
       ...s,
       status: "loading",
@@ -58,7 +62,9 @@ export function useTTS() {
       const result = await loadTextToSpeech(
         onnxDir,
         { executionProviders: [ep], graphOptimizationLevel: "all" },
-        onLoad
+        onLoad,
+        cpuUsagePercent,
+        cpuThreadCount
       );
       const label: "GPU" | "CPU" = ep === "webgpu" ? "GPU" : "CPU";
       return { tts: result.tts, label };
@@ -125,8 +131,8 @@ export function useTTS() {
     styleRef.current = style;
   }, []);
 
-  const setCustomStyle = useCallback((json: any) => {
-    styleRef.current = loadCustomVoiceStyle(json);
+  const setCustomStyle = useCallback(async (json: any) => {
+    styleRef.current = await loadCustomVoiceStyle(json);
   }, []);
 
   const synthesise = useCallback(

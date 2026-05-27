@@ -1,6 +1,6 @@
 [package]
 name = "supertonic-3-tts-app"
-version = "0.1.3"
+version = "0.1.4"
 description = "Supertonic 3 TTS App — on-device text-to-speech"
 authors = ["drbaph"]
 license = "MIT"

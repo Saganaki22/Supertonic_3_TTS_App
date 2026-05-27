@@ -1,4 +1,65 @@
-import * as ort from "onnxruntime-web";
+import type * as Ort from "onnxruntime-web";
+
+type OrtModule = typeof Ort;
+
+let ort: OrtModule | null = null;
+let ortPromise: Promise<OrtModule> | null = null;
+let ortModuleKey: string | null = null;
+const DEFAULT_CPU_USAGE_PERCENT = 75;
+let currentCpuUsagePercent = DEFAULT_CPU_USAGE_PERCENT;
+
+function ortAssetUrl(fileName: string): string {
+  return new URL(`${import.meta.env.BASE_URL}ort/${fileName}`, window.location.href).href;
+}
+
+function clampCpuUsagePercent(percent: number): number {
+  if (!Number.isFinite(percent)) return DEFAULT_CPU_USAGE_PERCENT;
+  return Math.min(100, Math.max(10, Math.round(percent)));
+}
+
+function cpuUsagePercentToThreads(percent: number, cpuThreadCount?: number): number {
+  const browserThreads =
+    typeof navigator !== "undefined" && navigator.hardwareConcurrency
+      ? navigator.hardwareConcurrency
+      : 4;
+  const availableThreads =
+    Number.isFinite(cpuThreadCount) && cpuThreadCount && cpuThreadCount > 0
+      ? Math.floor(cpuThreadCount)
+      : browserThreads;
+  return Math.max(1, Math.round(availableThreads * clampCpuUsagePercent(percent) / 100));
+}
+
+async function loadOrt(
+  cpuUsagePercent = currentCpuUsagePercent,
+  cpuThreadCount?: number
+): Promise<OrtModule> {
+  currentCpuUsagePercent = clampCpuUsagePercent(cpuUsagePercent);
+  if (ortPromise && cpuThreadCount === undefined) {
+    ort = await ortPromise;
+    return ort;
+  }
+  const numThreads = cpuUsagePercentToThreads(currentCpuUsagePercent, cpuThreadCount);
+  const moduleKey = `threads-${numThreads}`;
+  if (!ortPromise || ortModuleKey !== moduleKey) {
+    ort = null;
+    ortModuleKey = moduleKey;
+    ortPromise = import(/* @vite-ignore */ `${ortAssetUrl("ort.all.min.mjs")}?${moduleKey}`) as Promise<OrtModule>;
+  }
+  ort = await ortPromise;
+  ort.env.wasm.proxy = true;
+  ort.env.wasm.numThreads = numThreads;
+  ort.env.wasm.initTimeout = 30000;
+  ort.env.wasm.wasmPaths = {
+    mjs: ortAssetUrl("ort-wasm-simd-threaded.jsep.mjs"),
+    wasm: ortAssetUrl("ort-wasm-simd-threaded.jsep.wasm"),
+  };
+  return ort;
+}
+
+function getOrt(): OrtModule {
+  if (!ort) throw new Error("ONNX Runtime is not loaded");
+  return ort;
+}
 
 export const AVAILABLE_LANGS = [
   "en", "ko", "ja", "ar", "bg", "cs", "da", "de", "el", "es", "et", "fi",
@@ -113,8 +174,8 @@ class UnicodeProcessor {
 
 class Style {
   constructor(
-    public ttl: ort.Tensor,
-    public dp: ort.Tensor
+    public ttl: Ort.Tensor,
+    public dp: Ort.Tensor
   ) {}
 }
 
@@ -124,10 +185,10 @@ export class TextToSpeech {
   constructor(
     private cfgs: any,
     private textProcessor: UnicodeProcessor,
-    private dpOrt: ort.InferenceSession,
-    private textEncOrt: ort.InferenceSession,
-    private vectorEstOrt: ort.InferenceSession,
-    private vocoderOrt: ort.InferenceSession
+    private dpOrt: Ort.InferenceSession,
+    private textEncOrt: Ort.InferenceSession,
+    private vectorEstOrt: Ort.InferenceSession,
+    private vocoderOrt: Ort.InferenceSession
   ) {
     this.sampleRate = cfgs.ae.sample_rate;
   }
@@ -180,36 +241,35 @@ export class TextToSpeech {
     speed: number,
     onStep?: ProgressCallback
   ) {
+    const ortApi = getOrt();
     const bsz = textList.length;
     const { textIds, textMask } = this.textProcessor.call(textList, langList);
     const textIdsFlat = new BigInt64Array(
       textIds.flat().map((x) => BigInt(x))
     );
-    const textIdsTensor = new ort.Tensor("int64", textIdsFlat, [
-      bsz,
-      textIds[0].length,
-    ]);
+    const textIdsDims: number[] = [bsz, textIds[0].length];
     const textMaskFlat = new Float32Array(textMask.flat(2));
-    const textMaskTensor = new ort.Tensor("float32", textMaskFlat, [
-      bsz,
-      1,
-      textMask[0][0].length,
-    ]);
+    const textMaskDims: number[] = [bsz, 1, textMask[0][0].length];
+    const styleTtlData = new Float32Array(style.ttl.data as Float32Array);
+    const styleTtlDims = style.ttl.dims as number[];
+    const styleDpData = new Float32Array(style.dp.data as Float32Array);
+    const styleDpDims = style.dp.dims as number[];
 
     const dpOut = await this.dpOrt.run({
-      text_ids: textIdsTensor,
-      style_dp: style.dp,
-      text_mask: textMaskTensor,
+      text_ids: new ortApi.Tensor("int64", new BigInt64Array(textIdsFlat), textIdsDims),
+      style_dp: new ortApi.Tensor("float32", new Float32Array(styleDpData), styleDpDims),
+      text_mask: new ortApi.Tensor("float32", new Float32Array(textMaskFlat), textMaskDims),
     });
     const duration = Array.from(dpOut.duration.data as Float32Array);
     for (let i = 0; i < duration.length; i++) duration[i] /= speed;
 
     const textEncOut = await this.textEncOrt.run({
-      text_ids: textIdsTensor,
-      style_ttl: style.ttl,
-      text_mask: textMaskTensor,
+      text_ids: new ortApi.Tensor("int64", new BigInt64Array(textIdsFlat), textIdsDims),
+      style_ttl: new ortApi.Tensor("float32", new Float32Array(styleTtlData), styleTtlDims),
+      text_mask: new ortApi.Tensor("float32", new Float32Array(textMaskFlat), textMaskDims),
     });
-    const textEmb = textEncOut.text_emb;
+    const textEmbData = new Float32Array(textEncOut.text_emb.data as Float32Array);
+    const textEmbDims = textEncOut.text_emb.dims as number[];
 
     let { xt, latentMask } = this.sampleNoisyLatent(
       duration,
@@ -219,38 +279,24 @@ export class TextToSpeech {
       this.cfgs.ttl.latent_dim
     );
     const latentMaskFlat = new Float32Array(latentMask.flat(2));
-    const latentMaskTensor = new ort.Tensor("float32", latentMaskFlat, [
-      bsz,
-      1,
-      latentMask[0][0].length,
-    ]);
-    const totalStepT = new ort.Tensor(
-      "float32",
-      new Float32Array(bsz).fill(totalStep),
-      [bsz]
-    );
+    const latentMaskDims: number[] = [bsz, 1, latentMask[0][0].length];
 
     for (let step = 0; step < totalStep; step++) {
       onStep?.(step + 1, totalStep);
       await new Promise<void>((r) => setTimeout(r, 0));
-      const curT = new ort.Tensor(
-        "float32",
-        new Float32Array(bsz).fill(step),
-        [bsz]
-      );
-      const xtT = new ort.Tensor("float32", new Float32Array(xt.flat(2)), [
+      const xtT = new ortApi.Tensor("float32", new Float32Array(xt.flat(2)), [
         bsz,
         xt[0].length,
         xt[0][0].length,
       ]);
       const vecOut = await this.vectorEstOrt.run({
         noisy_latent: xtT,
-        text_emb: textEmb,
-        style_ttl: style.ttl,
-        latent_mask: latentMaskTensor,
-        text_mask: textMaskTensor,
-        current_step: curT,
-        total_step: totalStepT,
+        text_emb: new ortApi.Tensor("float32", new Float32Array(textEmbData), textEmbDims),
+        style_ttl: new ortApi.Tensor("float32", new Float32Array(styleTtlData), styleTtlDims),
+        latent_mask: new ortApi.Tensor("float32", new Float32Array(latentMaskFlat), latentMaskDims),
+        text_mask: new ortApi.Tensor("float32", new Float32Array(textMaskFlat), textMaskDims),
+        current_step: new ortApi.Tensor("float32", new Float32Array(bsz).fill(step), [bsz]),
+        total_step: new ortApi.Tensor("float32", new Float32Array(bsz).fill(totalStep), [bsz]),
       });
       const denoised = Array.from(
         vecOut.denoised_latent.data as Float32Array
@@ -270,7 +316,7 @@ export class TextToSpeech {
       }
     }
 
-    const finalT = new ort.Tensor("float32", new Float32Array(xt.flat(2)), [
+    const finalT = new ortApi.Tensor("float32", new Float32Array(xt.flat(2)), [
       bsz,
       xt[0].length,
       xt[0][0].length,
@@ -325,6 +371,7 @@ export class TextToSpeech {
 }
 
 export async function loadVoiceStyle(paths: string[]): Promise<Style> {
+  const ortApi = await loadOrt();
   const bsz = paths.length;
   const first = await (await fetch(paths[0])).json();
   const ttlDims = first.style_ttl.dims;
@@ -337,30 +384,34 @@ export async function loadVoiceStyle(paths: string[]): Promise<Style> {
     dpFlat.set(style.style_dp.data.flat(Infinity), i * dpDims[1] * dpDims[2]);
   }
   return new Style(
-    new ort.Tensor("float32", ttlFlat, [bsz, ttlDims[1], ttlDims[2]]),
-    new ort.Tensor("float32", dpFlat, [bsz, dpDims[1], dpDims[2]])
+    new ortApi.Tensor("float32", ttlFlat, [bsz, ttlDims[1], ttlDims[2]]),
+    new ortApi.Tensor("float32", dpFlat, [bsz, dpDims[1], dpDims[2]])
   );
 }
 
-export function loadCustomVoiceStyle(json: {
+export async function loadCustomVoiceStyle(json: {
   style_ttl: { dims: number[]; data: number[][] };
   style_dp: { dims: number[]; data: number[][] };
-}): Style {
+}): Promise<Style> {
+  const ortApi = await loadOrt();
   const ttlDims = json.style_ttl.dims;
   const dpDims = json.style_dp.dims;
   const ttlFlat = new Float32Array((json.style_ttl.data as any[]).flat(Infinity) as number[]);
   const dpFlat = new Float32Array((json.style_dp.data as any[]).flat(Infinity) as number[]);
   return new Style(
-    new ort.Tensor("float32", ttlFlat, [1, ttlDims[1], ttlDims[2]]),
-    new ort.Tensor("float32", dpFlat, [1, dpDims[1], dpDims[2]])
+    new ortApi.Tensor("float32", ttlFlat, [1, ttlDims[1], ttlDims[2]]),
+    new ortApi.Tensor("float32", dpFlat, [1, dpDims[1], dpDims[2]])
   );
 }
 
 export async function loadTextToSpeech(
   onnxDir: string,
-  sessionOpts: ort.InferenceSession.SessionOptions,
-  onLoad?: (name: string, cur: number, total: number) => void
+  sessionOpts: Ort.InferenceSession.SessionOptions,
+  onLoad?: (name: string, cur: number, total: number) => void,
+  cpuUsagePercent = DEFAULT_CPU_USAGE_PERCENT,
+  cpuThreadCount?: number
 ): Promise<{ tts: TextToSpeech; cfgs: any }> {
+  const ortApi = await loadOrt(cpuUsagePercent, cpuThreadCount);
   const cfgsBuf = await fetchWithHashCheck(`${onnxDir}/tts.json`, "onnx/tts.json");
   const cfgs = JSON.parse(new TextDecoder().decode(cfgsBuf));
   const modelFiles = [
@@ -369,7 +420,7 @@ export async function loadTextToSpeech(
     { name: "Vector Estimator", file: "vector_estimator.onnx" },
     { name: "Vocoder", file: "vocoder.onnx" },
   ];
-  const sessions: ort.InferenceSession[] = [];
+  const sessions: Ort.InferenceSession[] = [];
   for (let i = 0; i < modelFiles.length; i++) {
     onLoad?.(modelFiles[i].name, i + 1, modelFiles.length + 1);
     const relPath = `onnx/${modelFiles[i].file}`;
@@ -377,7 +428,7 @@ export async function loadTextToSpeech(
     const blob = new Blob([modelBuf]);
     const url = URL.createObjectURL(blob);
     try {
-      sessions.push(await ort.InferenceSession.create(url, sessionOpts));
+      sessions.push(await ortApi.InferenceSession.create(url, sessionOpts));
     } finally {
       URL.revokeObjectURL(url);
     }

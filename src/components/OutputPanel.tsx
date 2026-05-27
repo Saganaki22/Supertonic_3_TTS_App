@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState } from "react";
+import { useRef, useEffect, useCallback, useMemo, useState } from "react";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
 import { wavToMp3, normalizeAudio } from "../lib/helpers";
 import { writeWavFile } from "../lib/tts";
@@ -11,6 +11,7 @@ interface Props {
   duration: number;
   genTime: number;
   normalize: boolean;
+  volume: number;
   onError: (msg: string) => void;
   onSaved: (msg: string, type: "success") => void;
 }
@@ -33,7 +34,7 @@ function drawWaveform(
   const BAR_MIN_W = 3;
   const BAR_COUNT = Math.max(60, Math.min(300, Math.floor(W / (BAR_MIN_W + BAR_GAP))));
   const barW = (W - BAR_COUNT * BAR_GAP) / BAR_COUNT;
-  const step = Math.floor(samples.length / BAR_COUNT);
+  const step = Math.max(1, Math.floor(samples.length / BAR_COUNT));
   const mid = H / 2;
   const accent =
     getComputedStyle(canvas).getPropertyValue("--accent").trim() || "#7c5cfc";
@@ -57,20 +58,33 @@ function drawWaveform(
 
 const BITRATES = [128, 192, 320] as const;
 
+function timestampedAudioName(extension: "wav" | "mp3"): string {
+  const d = new Date();
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const stamp = [
+    d.getFullYear(),
+    pad(d.getMonth() + 1),
+    pad(d.getDate()),
+  ].join("") + "-" + [
+    pad(d.getHours()),
+    pad(d.getMinutes()),
+    pad(d.getSeconds()),
+  ].join("");
+  return `supertonic-output-${stamp}.${extension}`;
+}
+
 export default function OutputPanel({
   wavData,
   sampleRate,
   duration,
   genTime,
   normalize,
+  volume,
   onError,
   onSaved,
 }: Props) {
   const t = useT();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const [dlOpen, setDlOpen] = useState(false);
-  const [dlMenuUp, setDlMenuUp] = useState(true);
   const [encoding, setEncoding] = useState(false);
   const [bitrate, setBitrate] = useState(192);
   const {
@@ -83,19 +97,23 @@ export default function OutputPanel({
     totalDuration,
     loaded,
     reset,
-  } = useAudioPlayer();
+  } = useAudioPlayer(volume);
 
   const progress = totalDuration > 0 ? currentTime / totalDuration : 0;
 
-  const audioData = normalize && wavData ? normalizeAudio(wavData) : wavData;
+  const audioData = useMemo(
+    () => normalize && wavData ? normalizeAudio(wavData) : wavData,
+    [normalize, wavData]
+  );
 
-  const prevWavRef = useRef<Float32Array | null>(null);
+  const prevPlaybackRef = useRef<{ data: Float32Array | null; sampleRate: number } | null>(null);
   useEffect(() => {
-    if (wavData && prevWavRef.current && wavData !== prevWavRef.current) {
+    const prev = prevPlaybackRef.current;
+    if (!prev || prev.data !== audioData || prev.sampleRate !== sampleRate) {
       reset();
+      prevPlaybackRef.current = { data: audioData, sampleRate };
     }
-    prevWavRef.current = wavData;
-  }, [wavData, reset]);
+  }, [audioData, sampleRate, reset]);
 
   useEffect(() => {
     if (!wavData || !canvasRef.current) return;
@@ -137,20 +155,13 @@ export default function OutputPanel({
     replay();
   }, [replay]);
 
-  const checkDlMenuDirection = useCallback(() => {
-    if (!wrapRef.current) return;
-    const rect = wrapRef.current.getBoundingClientRect();
-    setDlMenuUp(rect.top > 160);
-  }, []);
-
   const onDownloadWav = useCallback(async () => {
     if (!wavData) return;
-    setDlOpen(false);
     setEncoding(true);
     try {
       const data = normalize ? normalizeAudio(wavData) : wavData;
       const buf = writeWavFile(data, sampleRate);
-      const path = await browseSave("supertonic-output.wav", [
+      const path = await browseSave(timestampedAudioName("wav"), [
         { name: "WAV", extensions: ["wav"] },
       ]);
       if (path) {
@@ -166,12 +177,11 @@ export default function OutputPanel({
 
   const onDownloadMp3 = useCallback(async () => {
     if (!wavData) return;
-    setDlOpen(false);
     setEncoding(true);
     try {
       const data = normalize ? normalizeAudio(wavData) : wavData;
       const mp3 = wavToMp3(data, sampleRate, bitrate);
-      const path = await browseSave("supertonic-output.mp3", [
+      const path = await browseSave(timestampedAudioName("mp3"), [
         { name: "MP3", extensions: ["mp3"] },
       ]);
       if (path) {
@@ -213,6 +223,19 @@ export default function OutputPanel({
 
   return (
     <div className="output-filled">
+      <div className="output-header">
+        <div>
+          <span className="section-label">Generated audio</span>
+          <p className="output-subtitle">Current render</p>
+        </div>
+        <div className="output-stats">
+          <span className="badge">{fmt(duration)}</span>
+          <span className="badge">{fmtSampleRate(sampleRate)}</span>
+          <span className="badge">{genTime.toFixed(1)}s</span>
+        </div>
+      </div>
+
+      <div className="waveform-panel">
         <canvas
           ref={canvasRef}
           id="waveform-canvas"
@@ -222,6 +245,7 @@ export default function OutputPanel({
         <div id="player-controls">
           <button
             id="play-pause-btn"
+            aria-label={playing ? "Pause" : "Play"}
             onClick={
               loaded
                 ? playing
@@ -234,23 +258,23 @@ export default function OutputPanel({
           >
             {playing ? "⏸" : "▶"}
           </button>
-          <span id="time-display">
-            {fmt(currentTime)} / {fmt(duration)}
-          </span>
-          <span className="badge">{fmtSampleRate(sampleRate)}</span>
-          <span id="gen-time" className="badge">
-            {genTime.toFixed(1)}s
-          </span>
+          <div className="time-stack">
+            <span id="time-display">{fmt(currentTime)} / {fmt(duration)}</span>
+            <span className="transport-label">{playing ? "Playing" : loaded ? "Ready" : "Preview"}</span>
+          </div>
         </div>
-        <div id="download-wrap" ref={wrapRef}>
+      </div>
+
+      <div id="download-wrap">
+        <div className="download-header">
+          <span className="section-label">{t.download}</span>
+          <span className="download-note">Timestamped filenames</span>
+        </div>
+        <div className="download-actions">
           <button
-            id="download-btn"
+            className="download-format-btn primary"
             disabled={encoding}
-            onClick={() => {
-              if (encoding) return;
-              if (!dlOpen) checkDlMenuDirection();
-              setDlOpen(!dlOpen);
-            }}
+            onClick={onDownloadWav}
           >
             <svg
               width="14"
@@ -264,53 +288,33 @@ export default function OutputPanel({
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            {encoding ? t.encoding : t.download}
-            {!encoding && (
-              <svg
-                className={`dl-chevron ${dlOpen ? "open" : ""}`}
-                width="10"
-                height="10"
-                viewBox="0 0 10 10"
-                fill="none"
-              >
-                <path
-                  d="M2 4L5 7L8 4"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            )}
+            <span>{encoding ? t.encoding : "Save WAV"}</span>
+            <small>Lossless</small>
           </button>
-          {dlOpen && (
-            <div
-              id="download-menu"
-              className={dlMenuUp ? "menu-up" : "menu-down"}
-            >
-              <button className="dl-option" onClick={onDownloadWav}>
-                <span className="dl-format">WAV</span>
-                <span className="dl-desc">Lossless, {fmtSampleRate(sampleRate)}</span>
-              </button>
-              <div className="dl-bitrate-section">
-                <span className="dl-bitrate-label">{t.mp3Bitrate}</span>
-                <div className="dl-bitrate-btns">
-                  {BITRATES.map((br) => (
-                    <button
-                      key={br}
-                      className={`dl-bitrate-btn${bitrate === br ? " active" : ""}`}
-                      onClick={() => setBitrate(br)}
-                    >{br}</button>
-                  ))}
-                </div>
+          <div className="mp3-save-panel">
+            <div className="dl-bitrate-section">
+              <span className="dl-bitrate-label">{t.mp3Bitrate}</span>
+              <div className="dl-bitrate-btns">
+                {BITRATES.map((br) => (
+                  <button
+                    key={br}
+                    className={`dl-bitrate-btn${bitrate === br ? " active" : ""}`}
+                    onClick={() => setBitrate(br)}
+                  >{br}</button>
+                ))}
               </div>
-              <button className="dl-option" onClick={onDownloadMp3}>
-                <span className="dl-format">MP3</span>
-                <span className="dl-desc">{bitrate}kbps, smaller file</span>
-              </button>
             </div>
-          )}
+            <button
+              className="download-format-btn"
+              disabled={encoding}
+              onClick={onDownloadMp3}
+            >
+              <span>Save MP3</span>
+              <small>{bitrate}kbps</small>
+            </button>
+          </div>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}

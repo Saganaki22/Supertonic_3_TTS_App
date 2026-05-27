@@ -1,10 +1,12 @@
 {
   "name": "supertonic-3-tts-app",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.4",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/copy-ort-assets.js",
     "dev": "vite",
+    "prebuild": "node scripts/copy-ort-assets.js",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri"

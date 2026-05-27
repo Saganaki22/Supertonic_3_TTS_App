@@ -26,23 +26,25 @@
 
 Supertonic 3 TTS App 是一款**完全离线**的文字转语音应用，所有神经网络推理均在本地设备上运行。无需云端、无需 API 密钥、数据不会离开您的电脑。
 
-应用将 [Supertone Supertonic 3](https://github.com/supertone-inc/supertonic) ONNX 模型封装在 Tauri 2 桌面应用中，使用 React 和 TypeScript 构建了精致的双栏 UI。音频生成使用 ONNX Runtime Web，支持 **WebGPU GPU 加速**（自动回退到 WASM CPU）。
+应用将 [Supertone Supertonic 3](https://github.com/supertone-inc/supertonic) ONNX 模型封装在 Tauri 2 桌面应用中，使用 React 和 TypeScript 构建了精致的双栏 UI。音频生成使用 ONNX Runtime Web，支持 **WebGPU GPU 加速**和**多线程 WASM CPU 回退**。
 
 ### 核心功能
 
 | 功能 | 说明 |
 |---|---|
-| **本地推理** | ONNX Runtime Web — GPU (WebGPU) 或 CPU (WASM SIMD) |
+| **本地推理** | ONNX Runtime Web — GPU (WebGPU) 或多线程 CPU (WASM SIMD + SharedArrayBuffer) |
 | **10 种内置语音** | 5 种女声 (F1–F5) 和 5 种男声 (M1–M5)，英语 |
 | **自定义语音克隆** | 加载通过 [supertonic_embeddings_trainer](https://github.com/Saganaki22/supertonic_embeddings_trainer) 训练的 `.json` 语音风格嵌入 |
 | **文件导入** | 支持 `.txt`、`.pdf`、`.docx`、`.md` 文件（PDF/DOCX 限制 20 MB） |
 | **GPU / CPU 切换** | 随时在 GPU 和 CPU 推理之间切换 |
+| **CPU 使用率控制** | CPU 模式会自动检测逻辑线程数，并允许选择 10%–100% 使用率（默认 75%） |
 | **步数控制** | 5（最快）到 16（最高质量）— 可调节速度/质量平衡 |
 | **语速控制** | 0.5× 到 2.0× 播放速度，超过 1.6× 时显示警告 |
-| **音频标准化** | 峰值标准化开关 — 应用于播放、历史记录和下载 |
+| **应用音量** | 全局播放音量滑块（默认 80%），作用于生成音频、历史记录和语音预览 |
+| **标准化输出** | 峰值标准化开关 — 应用于播放、历史记录和下载 |
 | **波形进度条** | 点击波形跳转到任意位置 |
-| **音频历史** | 保存最近 10 条生成记录，含元数据（语音、步数、语速、时长） |
-| **MP3 和 WAV 导出** | 下载为 WAV 或 MP3（128 / 192 / 320 kbps 比特率可选） |
+| **音频历史** | 当前生成保留在主视图，历史记录最多显示之前的 6 条生成 |
+| **MP3 和 WAV 导出** | 保存为 WAV 或 MP3（128 / 192 / 320 kbps），文件名自动带时间戳避免覆盖 |
 | **深色 / 浅色主题** | 跟随系统的主题切换 |
 | **5 种强调色** | 紫色、蓝色、绿色、红色、黄色 |
 | **UI 缩放** | 80% 到 150% 缩放滑块 |
@@ -73,7 +75,7 @@ Supertonic 3 TTS App 是一款**完全离线**的文字转语音应用，所有�
 
 **前端**通过 ONNX Runtime Web + `lamejs-fixed` 在浏览器内处理所有 ML 推理、音频处理和编码。
 
-**Rust 后端**仅处理文件系统访问（读取文件、保存音频、从 PDF/DOCX 提取文本）、剪贴板和原生对话框。无外部进程、无 Python、无 FFmpeg。
+**Rust 后端**处理文件系统访问（读取文件、保存音频、从 PDF/DOCX 提取文本）、剪贴板、原生对话框、SharedArrayBuffer 所需 WebView 头，以及逻辑 CPU 线程数检测。无外部进程、无 Python、无 FFmpeg。
 
 ---
 
@@ -137,7 +139,7 @@ npm run tauri build
 
 生成的便携 NSIS 安装包位于：
 ```
-src-tauri/target/release/bundle/nsis/Supertonic 3 TTS App_0.1.2_x64-setup.exe
+src-tauri/target/release/bundle/nsis/Supertonic 3 TTS App_0.1.4_x64-setup.exe
 ```
 
 可执行文件位于：
@@ -168,7 +170,7 @@ upx --best --lzma src-tauri/target/release/supertonic-3-tts-app.exe
 │   ├── assets/logo.png         # 应用图标
 │   └── voice-samples/          # 语音样本 WAV (F1–F5, M1–M5)
 ├── scripts/
-│   └── patch-lamejs.js         # lamejs-fixed 安装后补丁
+│   └── copy-ort-assets.js      # 为开发/生产复制 ONNX Runtime Web 资源
 ├── src/
 │   ├── main.tsx                # 入口，全局事件处理
 │   ├── App.tsx                 # 根组件，布局，状态
@@ -178,14 +180,14 @@ upx --best --lzma src-tauri/target/release/supertonic-3-tts-app.exe
 │   ├── components/
 │   │   ├── Header.tsx          # 图标、品牌、设置、状态徽章
 │   │   ├── Footer.tsx          # 版本号、GitHub 链接
-│   │   ├── SettingsPanel.tsx   # 主题、强调色、GPU/CPU、UI 缩放
+│   │   ├── SettingsPanel.tsx   # 主题、强调色、推理设备、CPU 使用率、音量、UI 缩放
 │   │   ├── StatusBadge.tsx     # 模型状态 + GPU/CPU 下拉切换
 │   │   ├── TextInput.tsx       # 文本框、字符计数、粘贴、浏览
 │   │   ├── VoiceGrid.tsx       # 10 语音选择网格
 │   │   ├── VoiceControls.tsx   # 步数和语速滑块
 │   │   ├── VoiceClone.tsx      # 自定义语音 .json 上传
-│   │   ├── OutputPanel.tsx     # 波形、播放器、下载菜单
-│   │   ├── AudioHistory.tsx    # 最近 10 条生成记录
+│   │   ├── OutputPanel.tsx     # 波形、播放器、带时间戳的 WAV/MP3 导出
+│   │   ├── AudioHistory.tsx    # 最多 6 条历史生成记录
 │   │   ├── PanelResize.tsx     # 可调整面板分隔条
 │   │   ├── CachePanel.tsx      # 模型缓存信息
 │   │   ├── ProgressBar.tsx     # 生成进度条
@@ -193,9 +195,9 @@ upx --best --lzma src-tauri/target/release/supertonic-3-tts-app.exe
 │   ├── hooks/
 │   │   ├── useTTS.ts           # ONNX 引擎状态管理
 │   │   ├── useAudioPlayer.ts   # Web Audio 播放和跳转
-│   │   └── useAudioHistory.ts  # 音频历史（pushCurrent 模式）
+│   │   └── useAudioHistory.ts  # 六项音频历史
 │   └── lib/
-│       ├── tts.ts              # ONNX 推理引擎、模型加载、SHA-256
+│       ├── tts.ts              # ONNX 推理引擎、显式 ORT 资源、SHA-256
 │       ├── helpers.ts          # chunkText、normalizeAudio、wavToMp3
 │       └── tauri.ts            # Tauri invoke 类型封装
 └── src-tauri/
@@ -207,12 +209,13 @@ upx --best --lzma src-tauri/target/release/supertonic-3-tts-app.exe
     ├── icons/                  # 应用图标 (ico, png)
     └── src/
         ├── main.rs             # Rust 入口
-        ├── lib.rs              # 插件注册
+        ├── lib.rs              # 插件注册、WebView 头、窗口创建
         └── commands/
             ├── mod.rs          # 命令模块导出
             ├── fs.rs           # read_text_file、save_wav/mp3_file
             ├── pdf.rs          # extract_pdf_text（20 MB 限制）
-            └── docx.rs         # extract_docx_text（20 MB 限制）
+            ├── docx.rs         # extract_docx_text（20 MB 限制）
+            └── system.rs       # logical_cpu_count，用于 CPU 线程自动检测
 ```
 
 ---
@@ -225,10 +228,12 @@ upx --best --lzma src-tauri/target/release/supertonic-3-tts-app.exe
 |---|---|---|
 | 主题 | 深色 / 浅色 | 深色 |
 | 强调色 | 紫色、蓝色、绿色、红色、黄色 | 紫色 |
-| GPU / CPU | WebGPU / WASM SIMD | GPU（自动回退） |
+| GPU / CPU | WebGPU / 多线程 WASM SIMD | GPU（自动回退） |
+| CPU 使用率 | 检测到的逻辑 CPU 线程的 10%–100% | 75% |
+| 应用音量 | 0% – 100% | 80% |
 | UI 缩放 | 80% – 150% | 100% |
 | 应用语言 | English、中文、Español、Français、Ελληνικά、Русский、日本語 | English |
-| 音频标准化 | 开 / 关 | 关 |
+| 标准化输出 | 开 / 关 | 关 |
 | MP3 比特率 | 128 / 192 / 320 kbps | 192 kbps |
 | 步数 | 5 – 16 | 8 |
 | 语速 | 0.5× – 2.0× | 1.0× |

@@ -48,3 +48,4 @@ src-tauri/icons/Square*.png
 src/assets/react.svg
 public/tauri.svg
 public/vite.svg
+public/ort/

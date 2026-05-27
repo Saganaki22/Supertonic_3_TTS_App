@@ -3,7 +3,7 @@ import { openExternal } from "../lib/tauri";
 export default function Footer() {
   return (
     <footer id="footer">
-      <span className="footer-version">v0.1.3</span>
+      <span className="footer-version">v0.1.4</span>
       <span className="footer-center">
         Powered by{" "}
         <a

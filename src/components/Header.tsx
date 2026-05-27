@@ -15,6 +15,11 @@ interface Props {
   onThemeChange: (t: "dark" | "light") => void;
   accent: string;
   onAccentChange: (a: string) => void;
+  cpuUsage: number;
+  onCpuUsageChange: (value: number) => void;
+  cpuThreadCount: number;
+  appVolume: number;
+  onAppVolumeChange: (value: number) => void;
 }
 
 export default function Header({
@@ -30,6 +35,11 @@ export default function Header({
   onThemeChange,
   accent,
   onAccentChange,
+  cpuUsage,
+  onCpuUsageChange,
+  cpuThreadCount,
+  appVolume,
+  onAppVolumeChange,
 }: Props) {
   return (
     <header id="header">
@@ -59,6 +69,11 @@ export default function Header({
           onAccentChange={onAccentChange}
           provider={provider}
           onLoadProvider={onSwitchProvider}
+          cpuUsage={cpuUsage}
+          onCpuUsageChange={onCpuUsageChange}
+          cpuThreadCount={cpuThreadCount}
+          appVolume={appVolume}
+          onAppVolumeChange={onAppVolumeChange}
         />
         {modelState === "ready" && (
           <button className="unload-btn" onClick={onUnload}>

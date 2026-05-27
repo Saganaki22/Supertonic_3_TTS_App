@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { openExternal } from "../lib/tauri";
 import type { LoadProvider } from "../hooks/useTTS";
 import { useI18n } from "../hooks/useI18n";
 
-const VERSION = "0.1.3";
+const VERSION = "0.1.4";
 const REPO_RELEASES = "https://github.com/Saganaki22/Supertonic_3_TTS_App/releases";
 const AUTHOR_GH = "https://github.com/Saganaki22";
 
@@ -15,6 +15,22 @@ const ACCENTS = [
   { id: "yellow", color: "#eab308" },
 ];
 
+interface Props {
+  uiScale: number;
+  onScaleChange: (s: number) => void;
+  theme: "dark" | "light";
+  onThemeChange: (t: "dark" | "light") => void;
+  accent: string;
+  onAccentChange: (a: string) => void;
+  provider: "GPU" | "CPU" | null;
+  onLoadProvider: (p: LoadProvider) => void;
+  cpuUsage: number;
+  onCpuUsageChange: (value: number) => void;
+  cpuThreadCount: number;
+  appVolume: number;
+  onAppVolumeChange: (value: number) => void;
+}
+
 export default function SettingsPanel({
   uiScale,
   onScaleChange,
@@ -24,16 +40,12 @@ export default function SettingsPanel({
   onAccentChange,
   provider,
   onLoadProvider,
-}: {
-  uiScale: number;
-  onScaleChange: (s: number) => void;
-  theme: "dark" | "light";
-  onThemeChange: (t: "dark" | "light") => void;
-  accent: string;
-  onAccentChange: (a: string) => void;
-  provider: "GPU" | "CPU" | null;
-  onLoadProvider: (p: LoadProvider) => void;
-}) {
+  cpuUsage,
+  onCpuUsageChange,
+  cpuThreadCount,
+  appVolume,
+  onAppVolumeChange,
+}: Props) {
   const { t, lang, setLang, options } = useI18n();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -51,6 +63,7 @@ export default function SettingsPanel({
       <button
         className={`settings-cog${open ? " active" : ""}`}
         onClick={() => setOpen(!open)}
+        aria-label={t.settings}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
           <circle cx="12" cy="12" r="3" />
@@ -97,18 +110,67 @@ export default function SettingsPanel({
                 <button
                   className={`settings-provider-btn${provider === "GPU" ? " active" : ""}`}
                   onClick={() => onLoadProvider("webgpu")}
-                >{t.gpu}</button>
+                >
+                  {t.gpu}
+                </button>
                 <button
                   className={`settings-provider-btn${provider === "CPU" ? " active" : ""}`}
                   onClick={() => onLoadProvider("wasm")}
-                >{t.cpu}</button>
+                >
+                  {t.cpu}
+                </button>
               </div>
             </div>
             {provider === "CPU" && (
-              <div className="settings-warning">
-                {t.cpuWarning}
-              </div>
+              <>
+                <div className="settings-row settings-slider-row">
+                  <span className="settings-label">{t.cpuUsage}</span>
+                  <span className="settings-value">
+                    {cpuUsage}% · {Math.max(1, Math.round(cpuThreadCount * cpuUsage / 100))} threads
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  className="settings-scale-slider"
+                  min={10}
+                  max={100}
+                  step={5}
+                  value={cpuUsage}
+                  onChange={(e) => onCpuUsageChange(parseInt(e.target.value, 10))}
+                />
+              </>
             )}
+          </div>
+
+          <div className="settings-divider" />
+
+          <div className="settings-group">
+            <div className="settings-row">
+              <span className="settings-label">{t.appVolume}</span>
+              <span className="settings-value">{appVolume}%</span>
+            </div>
+            <input
+              type="range"
+              className="settings-scale-slider"
+              min={0}
+              max={100}
+              step={1}
+              value={appVolume}
+              onChange={(e) => onAppVolumeChange(parseInt(e.target.value, 10))}
+            />
+            <div className="settings-row settings-slider-row">
+              <span className="settings-label">{t.uiScale}</span>
+              <span className="settings-value">{Math.round(uiScale * 100)}%</span>
+            </div>
+            <input
+              type="range"
+              className="settings-scale-slider"
+              min={0.8}
+              max={1.5}
+              step={0.05}
+              value={uiScale}
+              onChange={(e) => onScaleChange(parseFloat(e.target.value))}
+            />
           </div>
 
           <div className="settings-divider" />
@@ -163,7 +225,7 @@ export default function SettingsPanel({
               <span className="settings-label">{t.license}</span>
               <div className="settings-licenses">
                 <span>MIT (code)</span>
-                <span className="settings-license-sep">·</span>
+                <span className="settings-license-sep">-</span>
                 <button className="settings-value-link" onClick={() => openExternal("https://huggingface.co/blog/open_rail")}>OpenRAIL</button>
                 <span>(model)</span>
               </div>
@@ -175,24 +237,6 @@ export default function SettingsPanel({
           <div className="settings-disclaimer">
             This model must not be used to cause harm, deceive, or generate
             malicious content. See the OpenRAIL license for full terms.
-          </div>
-
-          <div className="settings-divider" />
-
-          <div className="settings-group">
-            <div className="settings-row">
-              <span className="settings-label">{t.uiScale}</span>
-              <span className="settings-value">{Math.round(uiScale * 100)}%</span>
-            </div>
-            <input
-              type="range"
-              className="settings-scale-slider"
-              min={0.8}
-              max={1.5}
-              step={0.05}
-              value={uiScale}
-              onChange={(e) => onScaleChange(parseFloat(e.target.value))}
-            />
           </div>
         </div>
       )}

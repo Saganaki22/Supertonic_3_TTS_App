@@ -16,10 +16,33 @@ import Footer from "./components/Footer";
 import PanelResize from "./components/PanelResize";
 import { useAudioHistory } from "./hooks/useAudioHistory";
 import type { AudioEntry } from "./hooks/useAudioHistory";
+import { getLogicalCpuCount } from "./lib/tauri";
 import "./App.css";
 
+const SETTINGS_DEFAULTS_VERSION = "0.1.4";
 const savedTheme = () => (localStorage.getItem("theme") as "dark" | "light") || "dark";
 const savedAccent = () => localStorage.getItem("accent") || "purple";
+const clampCpuUsage = (value: number) => Math.min(100, Math.max(10, Math.round(value)));
+const clampVolume = (value: number) => Math.min(100, Math.max(0, Math.round(value)));
+
+function migrateSettingsDefaults() {
+  if (localStorage.getItem("settingsDefaultsVersion") === SETTINGS_DEFAULTS_VERSION) return;
+  localStorage.setItem("cpuUsagePercent", "75");
+  localStorage.setItem("appVolumePercent", "80");
+  localStorage.setItem("settingsDefaultsVersion", SETTINGS_DEFAULTS_VERSION);
+}
+
+migrateSettingsDefaults();
+
+const savedCpuUsage = () => {
+  const value = Number(localStorage.getItem("cpuUsagePercent"));
+  return Number.isFinite(value) ? clampCpuUsage(value) : 75;
+};
+const savedAppVolume = () => {
+  const value = Number(localStorage.getItem("appVolumePercent"));
+  return Number.isFinite(value) ? clampVolume(value) : 80;
+};
+type AudioDraft = Omit<AudioEntry, "id" | "timestamp">;
 
 export default function App() {
   const { state, load, unload, loadVoice, setCustomStyle, synthesise, cancel } = useTTS();
@@ -36,14 +59,22 @@ export default function App() {
     setToastType(type);
   }, []);
   const [customVoiceEnabled, setCustomVoiceEnabled] = useState(false);
-  const [customStyleJson, setCustomStyleJson] = useState<object | null>(null);
+  const [customStyleJson, setCustomStyleJson] = useState<any>(null);
   const [normalize, setNormalize] = useState(false);
   const [uiScale, setUiScale] = useState(1);
   const [panelWidth, setPanelWidth] = useState(400);
   const [theme, setTheme] = useState<"dark" | "light">(savedTheme);
   const [accent, setAccent] = useState(savedAccent);
-  const audioHistory = useAudioHistory();
+  const [cpuUsage, setCpuUsage] = useState(savedCpuUsage);
+  const [appVolume, setAppVolume] = useState(savedAppVolume);
+  const [cpuThreadCount, setCpuThreadCount] = useState(
+    typeof navigator !== "undefined" && navigator.hardwareConcurrency
+      ? navigator.hardwareConcurrency
+      : 4
+  );
+  const audioHistory = useAudioHistory(appVolume / 100);
   const [historyPlayingId, setHistoryPlayingId] = useState<string | null>(null);
+  const [currentAudio, setCurrentAudio] = useState<AudioDraft | null>(null);
 
   const onThemeChange = useCallback((t: "dark" | "light") => {
     setTheme(t);
@@ -55,6 +86,18 @@ export default function App() {
     localStorage.setItem("accent", a);
   }, []);
 
+  const onCpuUsageChange = useCallback((value: number) => {
+    const next = clampCpuUsage(value);
+    setCpuUsage(next);
+    localStorage.setItem("cpuUsagePercent", String(next));
+  }, []);
+
+  const onAppVolumeChange = useCallback((value: number) => {
+    const next = clampVolume(value);
+    setAppVolume(next);
+    localStorage.setItem("appVolumePercent", String(next));
+  }, []);
+
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
@@ -63,31 +106,47 @@ export default function App() {
     document.documentElement.setAttribute("data-accent", accent);
   }, [accent]);
 
+  useEffect(() => {
+    getLogicalCpuCount()
+      .then((count) => {
+        if (Number.isFinite(count) && count > 0) setCpuThreadCount(count);
+      })
+      .catch(() => {});
+  }, []);
+
+  const onUnload = useCallback(() => {
+    unload();
+    setCurrentAudio(null);
+  }, [unload]);
+
   const onSwitchProvider = useCallback(async (provider: LoadProvider) => {
     if (state.status === "loading" || state.status === "generating") return;
-    const currentEp: LoadProvider = state.provider === "CPU" ? "wasm" : "webgpu";
-    if (provider === currentEp) return;
-    unload();
+    if (state.provider !== null) {
+      const currentEp: LoadProvider = state.provider === "CPU" ? "wasm" : "webgpu";
+      if (provider === currentEp) return;
+      onUnload();
+    }
     try {
-      await load(provider);
+      await load(provider, cpuUsage, cpuThreadCount);
     } catch (e: any) {
       showToast(t.errLoadProvider(provider === "webgpu" ? t.gpu : t.cpu, e.message));
     }
-  }, [state.status, state.provider, unload, load, showToast, t]);
+  }, [state.status, state.provider, onUnload, load, cpuUsage, cpuThreadCount, showToast, t]);
 
   const onLoadAndGenerate = useCallback(async (provider?: LoadProvider) => {
     try {
-      await load(provider);
+      await load(provider, cpuUsage, cpuThreadCount);
       const trimmed = text.trim();
       if (trimmed) {
         if (customVoiceEnabled && customStyleJson) {
-          setCustomStyle(customStyleJson);
+          await setCustomStyle(customStyleJson);
         } else {
           await loadVoice(voice);
         }
         const result = await synthesise(trimmed, lang, steps, speed);
         if (result) {
-          audioHistory.pushCurrent({
+          if (currentAudio) audioHistory.addEntry(currentAudio);
+          setCurrentAudio({
             ...result,
             text: trimmed,
             voice,
@@ -101,7 +160,7 @@ export default function App() {
       if (e.message !== "cancelled")
         showToast(t.error + ": " + e.message);
     }
-  }, [load, text, lang, steps, speed, voice, customVoiceEnabled, customStyleJson, loadVoice, setCustomStyle, synthesise, showToast, audioHistory, t]);
+  }, [load, cpuUsage, cpuThreadCount, text, lang, steps, speed, voice, customVoiceEnabled, customStyleJson, loadVoice, setCustomStyle, synthesise, showToast, audioHistory, currentAudio, t]);
 
   const onVoiceChange = useCallback(
     async (id: string) => {
@@ -117,11 +176,15 @@ export default function App() {
   );
 
   const onLoadCustomStyle = useCallback(
-    (json: object) => {
+    async (json: any) => {
       setCustomStyleJson(json);
-      setCustomStyle(json);
+      try {
+        await setCustomStyle(json);
+      } catch (e: any) {
+        showToast(t.errReadStyle(e.message || String(e)));
+      }
     },
-    [setCustomStyle]
+    [setCustomStyle, showToast, t]
   );
 
   const onClearCustomStyle = useCallback(() => {
@@ -130,12 +193,12 @@ export default function App() {
   }, [voice, loadVoice]);
 
   const onToggleCustomVoice = useCallback(
-    (enabled: boolean) => {
+    async (enabled: boolean) => {
       setCustomVoiceEnabled(enabled);
       if (enabled && customStyleJson) {
-        setCustomStyle(customStyleJson);
+        await setCustomStyle(customStyleJson);
       } else if (!enabled) {
-        loadVoice(voice);
+        await loadVoice(voice);
       }
     },
     [customVoiceEnabled, customStyleJson, voice, loadVoice, setCustomStyle]
@@ -149,13 +212,14 @@ export default function App() {
     }
     try {
       if (customVoiceEnabled && customStyleJson) {
-        setCustomStyle(customStyleJson);
+        await setCustomStyle(customStyleJson);
       } else {
-      await loadVoice(voice);
+        await loadVoice(voice);
       }
       const result = await synthesise(trimmed, lang, steps, speed);
       if (result) {
-        audioHistory.pushCurrent({
+        if (currentAudio) audioHistory.addEntry(currentAudio);
+        setCurrentAudio({
           ...result,
           text: trimmed,
           voice,
@@ -168,7 +232,7 @@ export default function App() {
       if (e.message !== "cancelled")
         showToast(t.errGenFailed(e.message));
     }
-  }, [text, lang, steps, speed, synthesise, customVoiceEnabled, customStyleJson, voice, loadVoice, setCustomStyle, showToast, audioHistory, t]);
+  }, [text, lang, steps, speed, synthesise, customVoiceEnabled, customStyleJson, voice, loadVoice, setCustomStyle, showToast, audioHistory, currentAudio, t]);
 
   const chunks = text.trim() ? chunkText(text.trim()).length : 0;
 
@@ -198,7 +262,7 @@ export default function App() {
         statusLabel={state.statusLabel}
         provider={state.provider}
         onLoad={onLoadAndGenerate}
-        onUnload={unload}
+        onUnload={onUnload}
         onSwitchProvider={onSwitchProvider}
         uiScale={uiScale}
         onScaleChange={setUiScale}
@@ -206,13 +270,18 @@ export default function App() {
         onThemeChange={onThemeChange}
         accent={accent}
         onAccentChange={onAccentChange}
+        cpuUsage={cpuUsage}
+        onCpuUsageChange={onCpuUsageChange}
+        cpuThreadCount={cpuThreadCount}
+        appVolume={appVolume}
+        onAppVolumeChange={onAppVolumeChange}
       />
       <main id="main">
         <section id="left-panel" style={{ width: panelWidth }}>
           <div className="left-panel-scroll">
             <div className="panel-section">
               <label className="section-label">{t.voice}</label>
-              <VoiceGrid selected={voice} onSelect={onVoiceChange} />
+              <VoiceGrid selected={voice} onSelect={onVoiceChange} volume={appVolume / 100} />
             </div>
             <VoiceControls
               lang={lang}
@@ -297,10 +366,11 @@ export default function App() {
             wavData={state.wavData}
             sampleRate={state.sampleRate}
             duration={state.duration}
-            genTime={state.genTime}
-            normalize={normalize}
-            onError={showToast}
-            onSaved={showToast}
+              genTime={state.genTime}
+              normalize={normalize}
+              volume={appVolume / 100}
+              onError={showToast}
+              onSaved={showToast}
           />
             <AudioHistory
               history={audioHistory.history}

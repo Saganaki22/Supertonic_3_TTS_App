@@ -29,23 +29,25 @@
 
 Supertonic 3 TTS App is a **fully offline** text-to-speech application that runs neural TTS inference entirely on your device. No cloud, no API keys, no data leaves your machine.
 
-It wraps the [Supertone Supertonic 3](https://github.com/supertone-inc/supertonic) ONNX models inside a Tauri 2 desktop app with a premium two-column UI built with React and TypeScript. Audio generation uses ONNX Runtime Web with **GPU acceleration via WebGPU** (falls back to WASM CPU automatically).
+It wraps the [Supertone Supertonic 3](https://github.com/supertone-inc/supertonic) ONNX models inside a Tauri 2 desktop app with a premium two-column UI built with React and TypeScript. Audio generation uses ONNX Runtime Web with **GPU acceleration via WebGPU** and a **multi-threaded WASM CPU fallback**.
 
 ### Key Features
 
 | Feature | Details |
 |---|---|
-| **On-device inference** | ONNX Runtime Web — GPU (WebGPU) or CPU (WASM SIMD) |
+| **On-device inference** | ONNX Runtime Web — GPU (WebGPU) or multi-threaded CPU (WASM SIMD + SharedArrayBuffer) |
 | **10 built-in voices** | 5 female (F1–F5) and 5 male (M1–M5) English voices |
 | **Custom voice cloning** | Load `.json` voice style embeddings trained with [supertonic_embeddings_trainer](https://github.com/Saganaki22/supertonic_embeddings_trainer) |
 | **File input** | Import `.txt`, `.pdf`, `.docx`, `.md` files (20 MB limit for PDF/DOCX) |
 | **GPU / CPU selection** | Switch between GPU and CPU providers at any time |
+| **CPU usage control** | CPU mode auto-detects logical CPU threads and lets users choose 10%–100% usage (75% default) |
 | **Steps control** | 5 (fastest) to 16 (highest quality) — adjustable speed/quality tradeoff |
 | **Speed control** | 0.5× to 2.0× playback speed with warning above 1.6× |
-| **Audio normalization** | Peak normalization toggle — applies to playback, history, and downloads |
+| **App volume** | App-wide playback volume slider (80% default) for generated audio, history, and voice previews |
+| **Normalize output** | Peak normalization toggle — applies to playback, history, and downloads |
 | **Waveform seekbar** | Click the waveform to seek to any position during playback |
-| **Audio history** | Last 10 generations stored with metadata (voice, steps, speed, duration) |
-| **MP3 & WAV export** | Download as WAV or MP3 (128 / 192 / 320 kbps bitrate selection) |
+| **Audio history** | Current generation stays in the main view; up to 6 previous generations are shown in history |
+| **MP3 & WAV export** | Save as WAV or MP3 (128 / 192 / 320 kbps) with timestamped filenames to avoid overwrites |
 | **Dark / Light theme** | System-aware theme toggle |
 | **5 accent colors** | Purple, Blue, Green, Red, Yellow |
 | **UI scaling** | 80% to 150% zoom slider |
@@ -76,7 +78,7 @@ It wraps the [Supertone Supertonic 3](https://github.com/supertone-inc/supertoni
 
 **Frontend** handles all ML inference, audio processing, and encoding in-browser via ONNX Runtime Web + `lamejs-fixed`.
 
-**Rust backend** handles only filesystem access (read files, save audio, extract text from PDF/DOCX), clipboard, and native dialogs. Zero sidecars, zero Python, zero FFmpeg.
+**Rust backend** handles filesystem access (read files, save audio, extract text from PDF/DOCX), clipboard, native dialogs, WebView headers for SharedArrayBuffer, and logical CPU thread detection. Zero sidecars, zero Python, zero FFmpeg.
 
 ---
 
@@ -140,7 +142,7 @@ npm run tauri build
 
 Produces a portable NSIS installer at:
 ```
-src-tauri/target/release/bundle/nsis/Supertonic 3 TTS App_0.1.2_x64-setup.exe
+src-tauri/target/release/bundle/nsis/Supertonic 3 TTS App_0.1.4_x64-setup.exe
 ```
 
 And the raw executable at:
@@ -171,7 +173,7 @@ This typically reduces the exe from ~12 MB to ~7.2 MB.
 │   ├── assets/logo.png         # App logo
 │   └── voice-samples/          # Voice sample WAVs (F1–F5, M1–M5)
 ├── scripts/
-│   └── patch-lamejs.js         # Postinstall patch for lamejs-fixed
+│   └── copy-ort-assets.js      # Copies ONNX Runtime Web assets for dev/prod
 ├── src/
 │   ├── main.tsx                # Entry point, global event handlers
 │   ├── App.tsx                 # Root component, layout, state
@@ -181,14 +183,14 @@ This typically reduces the exe from ~12 MB to ~7.2 MB.
 │   ├── components/
 │   │   ├── Header.tsx          # Logo, brand, settings, status badge
 │   │   ├── Footer.tsx          # Version, GitHub link
-│   │   ├── SettingsPanel.tsx   # Theme, accent, GPU/CPU, UI scale
+│   │   ├── SettingsPanel.tsx   # Theme, accent, provider, CPU usage, volume, UI scale
 │   │   ├── StatusBadge.tsx     # Model status + GPU/CPU chevron dropdown
 │   │   ├── TextInput.tsx       # Textarea with char count, paste, browse
 │   │   ├── VoiceGrid.tsx       # 10-voice selector grid
 │   │   ├── VoiceControls.tsx   # Steps & speed sliders
 │   │   ├── VoiceClone.tsx      # Custom voice .json upload
-│   │   ├── OutputPanel.tsx     # Waveform, player, download menu
-│   │   ├── AudioHistory.tsx    # Last 10 generations
+│   │   ├── OutputPanel.tsx     # Waveform, player, timestamped WAV/MP3 export
+│   │   ├── AudioHistory.tsx    # Up to 6 previous generations
 │   │   ├── PanelResize.tsx     # Resizable panel divider
 │   │   ├── CachePanel.tsx      # Model cache info
 │   │   ├── ProgressBar.tsx     # Generation progress bar
@@ -196,9 +198,9 @@ This typically reduces the exe from ~12 MB to ~7.2 MB.
 │   ├── hooks/
 │   │   ├── useTTS.ts           # ONNX engine state management
 │   │   ├── useAudioPlayer.ts   # Web Audio playback + seeking
-│   │   └── useAudioHistory.ts  # Audio history with pushCurrent pattern
+│   │   └── useAudioHistory.ts  # Six-item audio history
 │   └── lib/
-│       ├── tts.ts              # ONNX inference engine, model loading, SHA-256
+│       ├── tts.ts              # ONNX inference engine, explicit ORT assets, SHA-256
 │       ├── helpers.ts          # chunkText, normalizeAudio, wavToMp3
 │       └── tauri.ts            # Typed Tauri invoke wrappers
 └── src-tauri/
@@ -210,12 +212,13 @@ This typically reduces the exe from ~12 MB to ~7.2 MB.
     ├── icons/                  # App icons (ico, png)
     └── src/
         ├── main.rs             # Rust entry point
-        ├── lib.rs              # Plugin registration
+        ├── lib.rs              # Plugin registration, WebView headers, window setup
         └── commands/
             ├── mod.rs          # Command module exports
             ├── fs.rs           # read_text_file, save_wav/mp3_file
             ├── pdf.rs          # extract_pdf_text (20 MB limit)
-            └── docx.rs         # extract_docx_text (20 MB limit)
+            ├── docx.rs         # extract_docx_text (20 MB limit)
+            └── system.rs       # logical_cpu_count for CPU thread auto-detection
 ```
 
 ---
@@ -228,10 +231,12 @@ All settings are accessible from the gear icon in the header:
 |---|---|---|
 | Theme | Dark / Light | Dark |
 | Accent Color | Purple, Blue, Green, Red, Yellow | Purple |
-| GPU / CPU | WebGPU / WASM SIMD | GPU (auto-fallback) |
+| GPU / CPU | WebGPU / multi-threaded WASM SIMD | GPU (auto-fallback) |
+| CPU Usage | 10% – 100% of detected logical CPU threads | 75% |
+| App Volume | 0% – 100% | 80% |
 | UI Scale | 80% – 150% | 100% |
 | App Language | English, 中文, Español, Français, Ελληνικά, Русский, 日本語 | English |
-| Normalize Audio | On / Off | Off |
+| Normalize Output | On / Off | Off |
 | MP3 Bitrate | 128 / 192 / 320 kbps | 192 kbps |
 | Steps | 5 – 16 | 8 |
 | Speed | 0.5× – 2.0× | 1.0× |
